@@ -1,0 +1,1284 @@
+<!DOCTYPE html>
+<html lang="pt-BR" class="h-full bg-[#080a0f] text-slate-100 selection:bg-cyan-500 selection:text-black">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>STUDIO DO - Sistema P2P WebRTC Broadcast & Teleprompter</title>
+
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    
+    <!-- PeerJS WebRTC Library -->
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            dark: '#080a0f',
+                            card: '#12151e',
+                            border: '#202636',
+                            red: '#ef4444',
+                            cyan: '#06b6d4',
+                            amber: '#f59e0b',
+                            emerald: '#10b981'
+                        }
+                    },
+                    animation: {
+                        'pulse-fast': 'pulse 1s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+                        'glow-red': 'glowRed 1.5s infinite alternate'
+                    },
+                    keyframes: {
+                        glowRed: {
+                            '0%': { boxShadow: 'inset 0 0 15px rgba(239, 68, 68, 0.5), 0 0 20px rgba(239, 68, 68, 0.4)' },
+                            '100%': { boxShadow: 'inset 0 0 35px rgba(239, 68, 68, 0.9), 0 0 40px rgba(239, 68, 68, 0.8)' }
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        /* Estilização Customizada e Scrollbar */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: #080a0f; }
+        ::-webkit-scrollbar-thumb { background: #202636; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #06b6d4; }
+        
+        /* Variáveis de Tema Dinâmico */
+        :root {
+            --accent-color: #06b6d4;
+            --accent-hover: #0891b2;
+        }
+
+        .bg-accent { background-color: var(--accent-color); }
+        .text-accent { color: var(--accent-color); }
+        .border-accent { border-color: var(--accent-color); }
+
+        /* Teleprompter Scroll Animation */
+        .prompter-container {
+            mask-image: linear-gradient(to bottom, transparent 0%, black 15%, black 85%, transparent 100%);
+            -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 15%, black 85%, transparent 100%);
+        }
+
+        /* Efeito de Tally Light na tela do Celular */
+        .tally-active-border {
+            animation: glowRed 1s infinite alternate;
+            border: 6px solid #ef4444 !important;
+        }
+
+        /* Fundo transparente absoluto para fontes OBS */
+        .obs-transparent {
+            background: transparent !important;
+            background-color: rgba(0,0,0,0) !important;
+        }
+    </style>
+</head>
+<body class="h-full flex flex-col font-sans text-slate-100 overflow-x-hidden">
+
+    <!-- HEADER / BARRA SUPERIOR (Oculta no modo OBS Clean) -->
+    <header id="main-header" class="border-b border-brand-border bg-brand-card/90 backdrop-blur-md sticky top-0 z-40 transition-all">
+        <div class="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between gap-4">
+            <!-- LOGO DA EMISSORA / SISTEMA -->
+            <div class="flex items-center gap-3 cursor-pointer" onclick="switchView('home')">
+                <div id="header-logo-container" class="w-10 h-10 rounded-xl bg-gradient-to-tr from-cyan-600 to-blue-600 flex items-center justify-center font-black text-xl text-white shadow-lg overflow-hidden border border-white/10">
+                    <span id="header-logo-text">SD</span>
+                    <img id="header-logo-img" src="" class="w-full h-full object-cover hidden" alt="Logo">
+                </div>
+                <div>
+                    <h1 class="font-black tracking-wider text-base sm:text-lg flex items-center gap-2">
+                        <span id="app-title-display">STUDIO DO</span>
+                        <span class="text-[10px] uppercase font-bold tracking-widest bg-cyan-500/10 text-cyan-400 px-2 py-0.5 rounded border border-cyan-500/20">PRO WebRTC</span>
+                    </h1>
+                    <p class="text-[11px] text-slate-400 font-medium hidden sm:block">Transmissão P2P de Ultra Baixa Latência</p>
+                </div>
+            </div>
+
+            <!-- BOTÕES DE AÇÃO E CONFIGURAÇÕES -->
+            <div class="flex items-center gap-2">
+                <button onclick="openModal('settings')" class="px-3 py-2 rounded-xl border border-brand-border bg-slate-900/80 hover:bg-slate-800 text-xs font-semibold text-slate-300 transition flex items-center gap-2">
+                    <i class="fa-solid fa-palette text-accent"></i> <span class="hidden md:inline">Personalizar</span>
+                </button>
+                <button onclick="openModal('help')" class="px-3 py-2 rounded-xl border border-brand-border bg-slate-900/80 hover:bg-slate-800 text-xs font-semibold text-slate-300 transition flex items-center gap-2">
+                    <i class="fa-solid fa-circle-question text-amber-400"></i> <span class="hidden md:inline">Como Usar</span>
+                </button>
+                <button onclick="switchView('home')" class="p-2 rounded-xl border border-brand-border bg-slate-900/80 hover:bg-slate-800 text-xs font-semibold text-slate-300 transition">
+                    <i class="fa-solid fa-house"></i>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- ÁREA PRINCIPAL DA APLICAÇÃO -->
+    <main class="flex-1 flex flex-col max-w-7xl w-full mx-auto p-4 gap-6">
+
+        <!-- ================================================================= -->
+        <!-- MODO 1: HOME / SELETOR DE SALA E MODO                            -->
+        <!-- ================================================================= -->
+        <section id="view-home" class="view-panel my-auto py-8 space-y-8 max-w-4xl mx-auto w-full">
+            <div class="text-center space-y-3">
+                <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-500/10 border border-cyan-500/30 text-cyan-400 text-xs font-semibold">
+                    <span class="w-2 h-2 rounded-full bg-cyan-400 animate-ping"></span> Tecnologia PeerJS + WebRTC Direct
+                </div>
+                <h2 class="text-3xl sm:text-5xl font-black text-white tracking-tight">Estúdio Móvel & Retorno ao Vivo</h2>
+                <p class="text-slate-400 text-sm sm:text-base max-w-xl mx-auto">
+                    Conecte celulares de repórteres e câmeras remotas direto ao seu OBS Studio/vMix com retorno de áudio, teleprompter e sinalização de Tally Light.
+                </p>
+            </div>
+
+            <!-- CARD DE CRIAÇÃO / ENTRADA EM SALA -->
+            <div class="bg-brand-card border border-brand-border rounded-3xl p-6 sm:p-8 space-y-6 shadow-2xl">
+                <div class="space-y-2">
+                    <label class="text-xs font-bold uppercase tracking-wider text-slate-400">Nome ou Código da Sala do Estúdio</label>
+                    <div class="flex gap-2">
+                        <input type="text" id="home-room-input" placeholder="Ex: plantao-ao-vivo" class="flex-1 bg-slate-950 border border-brand-border rounded-xl px-4 py-3 text-sm font-bold text-white focus:outline-none focus:border-cyan-500 transition">
+                        <button onclick="generateRandomRoom()" class="px-4 py-3 bg-slate-900 border border-brand-border hover:bg-slate-800 text-xs font-bold text-slate-300 rounded-xl transition">
+                            <i class="fa-solid fa-dice"></i> Gerar
+                        </button>
+                    </div>
+                </div>
+
+                <!-- SELEÇÃO DE PAPEL / MODO -->
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <!-- Opção Diretor -->
+                    <div onclick="enterRoom('director')" class="group p-5 bg-slate-950/60 border border-brand-border hover:border-cyan-500/50 rounded-2xl cursor-pointer transition-all hover:bg-slate-900/80">
+                        <div class="w-10 h-10 rounded-xl bg-cyan-500/10 text-cyan-400 flex items-center justify-center text-lg mb-3 group-hover:scale-110 transition-transform">
+                            <i class="fa-solid fa-sliders"></i>
+                        </div>
+                        <h3 class="font-extrabold text-base text-white group-hover:text-cyan-400 transition-colors">Painel do Diretor / Controle</h3>
+                        <p class="text-xs text-slate-400 mt-1">Controle câmeras, envie retorno IFB, opede o teleprompter e comande os sinais de NO AR.</p>
+                    </div>
+
+                    <!-- Opção Repórter -->
+                    <div onclick="enterRoom('guest')" class="group p-5 bg-slate-950/60 border border-brand-border hover:border-emerald-500/50 rounded-2xl cursor-pointer transition-all hover:bg-slate-900/80">
+                        <div class="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-400 flex items-center justify-center text-lg mb-3 group-hover:scale-110 transition-transform">
+                            <i class="fa-solid fa-video"></i>
+                        </div>
+                        <h3 class="font-extrabold text-base text-white group-hover:text-emerald-400 transition-colors">Modo Repórter / Câmera</h3>
+                        <p class="text-xs text-slate-400 mt-1">Transmitir imagem e áudio do celular/PC, receber retorno do estúdio e teleprompter.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+
+        <!-- ================================================================= -->
+        <!-- MODO 2: PAINEL DO DIRETOR (ESTÚDIO / CONTROLE)                    -->
+        <!-- ================================================================= -->
+        <section id="view-director" class="view-panel hidden flex-1 flex flex-col gap-6">
+            <!-- BARRA SUPERIOR DE STATUS E LINK DE CONVITE -->
+            <div class="bg-brand-card border border-brand-border p-4 rounded-2xl flex flex-wrap items-center justify-between gap-4">
+                <div class="flex items-center gap-3">
+                    <div class="w-3 h-3 rounded-full bg-emerald-500 animate-pulse"></div>
+                    <div>
+                        <span class="text-xs text-slate-400 uppercase font-bold tracking-wider">Sala Ativa:</span>
+                        <h2 id="director-room-title" class="text-lg font-black text-white font-mono">--</h2>
+                    </div>
+                </div>
+
+                <div class="flex flex-wrap items-center gap-2">
+                    <button onclick="copyGuestInviteLink()" class="px-3 py-2 bg-cyan-600 hover:bg-cyan-500 text-black font-bold rounded-xl text-xs transition flex items-center gap-2">
+                        <i class="fa-regular fa-copy"></i> Copiar Link p/ Repórter
+                    </button>
+                    <button onclick="copyAutoSceneLink()" class="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-brand-border font-semibold rounded-xl text-xs transition flex items-center gap-2">
+                        <i class="fa-solid fa-desktop text-purple-400"></i> Link OBS Auto-Scene
+                    </button>
+                </div>
+            </div>
+
+            <!-- CONTAINER SPLIT: PAINEL DE CONTROLE (ESQUERDA) E MONITORES (DIREITA) -->
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 flex-1">
+                
+                <!-- COLUNA ESQUERDA: RETORNO IFB & TELEPROMPTER CONTROL -->
+                <div class="space-y-6">
+                    <!-- PAINEL DE RETORNO DO ESTÚDIO (IFB / TALKBACK) -->
+                    <div class="bg-brand-card border border-brand-border rounded-2xl p-4 space-y-4">
+                        <div class="flex items-center justify-between border-b border-brand-border pb-3">
+                            <h3 class="text-xs font-bold uppercase tracking-wider text-cyan-400 flex items-center gap-2">
+                                <i class="fa-solid fa-headset"></i> Retorno do Estúdio (IFB)
+                            </h3>
+                            <span id="director-ifb-status" class="text-[10px] bg-slate-800 text-slate-400 px-2 py-0.5 rounded font-mono">Desativado</span>
+                        </div>
+
+                        <!-- Prévia da Câmera/Microfone do Diretor -->
+                        <div class="bg-black rounded-xl overflow-hidden aspect-video relative border border-brand-border flex items-center justify-center">
+                            <video id="director-local-video" autoplay playsinline muted class="w-full h-full object-cover"></video>
+                            <div id="director-video-placeholder" class="text-center p-4">
+                                <i class="fa-solid fa-microphone-slash text-2xl text-slate-600 mb-1"></i>
+                                <p class="text-[11px] text-slate-500">Câmera/Mic do Diretor Desativados</p>
+                            </div>
+                            <!-- VU Meter local do estúdio -->
+                            <div class="absolute bottom-2 left-2 right-2 bg-black/80 px-2.5 py-1 rounded-lg border border-white/10 flex items-center gap-2">
+                                <i class="fa-solid fa-microphone text-[10px] text-slate-400"></i>
+                                <div class="flex-1 h-1.5 bg-slate-800 rounded-full overflow-hidden">
+                                    <div id="director-vu-bar" class="h-full bg-emerald-500 w-0 transition-all duration-75"></div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Seletores de Hardware do Diretor -->
+                        <div class="space-y-2 text-xs">
+                            <div>
+                                <label class="text-slate-400 text-[11px]">Microfone de Retorno</label>
+                                <select id="director-mic-select" class="w-full bg-slate-950 border border-brand-border rounded-lg p-2 text-slate-200 outline-none mt-1"></select>
+                            </div>
+                            <div>
+                                <label class="text-slate-400 text-[11px]">Câmera de Retorno (Opcional)</label>
+                                <select id="director-cam-select" class="w-full bg-slate-950 border border-brand-border rounded-lg p-2 text-slate-200 outline-none mt-1"></select>
+                            </div>
+                        </div>
+
+                        <!-- Botão PUSH TO TALK / TRAVA DE RETORNO -->
+                        <div class="flex gap-2">
+                            <button id="btn-talkback-toggle" onclick="toggleDirectorTalkback()" class="flex-1 py-3 bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold rounded-xl text-xs transition flex items-center justify-center gap-2 border border-brand-border">
+                                <i class="fa-solid fa-microphone"></i> Abrir Retorno (IFB)
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- PAINEL DO TELEPROMPTER & SINAIS (CUES) -->
+                    <div class="bg-brand-card border border-brand-border rounded-2xl p-4 space-y-4">
+                        <div class="flex items-center justify-between border-b border-brand-border pb-3">
+                            <h3 class="text-xs font-bold uppercase tracking-wider text-amber-400 flex items-center gap-2">
+                                <i class="fa-solid fa-scroll"></i> Teleprompter & Deixas
+                            </h3>
+                        </div>
+
+                        <!-- Botões Rápidos de Deixa (Cues Instantâneos) -->
+                        <div class="grid grid-cols-2 gap-2">
+                            <button onclick="sendCueAlert('🔴 AO VIVO!', 'red')" class="p-2.5 bg-red-600/20 hover:bg-red-600/30 border border-red-500/40 text-red-400 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5">
+                                <i class="fa-solid fa-circle"></i> NO AR
+                            </button>
+                            <button onclick="sendCueAlert('⚠️ ATENÇÃO / PREPARA', 'amber')" class="p-2.5 bg-amber-600/20 hover:bg-amber-600/30 border border-amber-500/40 text-amber-400 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5">
+                                <i class="fa-solid fa-triangle-exclamation"></i> PREPARA
+                            </button>
+                            <button onclick="sendCueAlert('⏹️ ENCERRANDO', 'slate')" class="p-2.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5">
+                                <i class="fa-solid fa-stop"></i> CORTA
+                            </button>
+                            <button onclick="sendCueAlert('👁️ OLHE PARA A CÂMERA', 'cyan')" class="p-2.5 bg-cyan-600/20 hover:bg-cyan-600/30 border border-cyan-500/40 text-cyan-400 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5">
+                                <i class="fa-solid fa-eye"></i> OLHE P/ CÂMERA
+                            </button>
+                        </div>
+
+                        <!-- Editor do Teleprompter -->
+                        <div class="space-y-2">
+                            <label class="text-[11px] text-slate-400 font-bold uppercase">Texto do Teleprompter</label>
+                            <textarea id="director-prompter-text" rows="4" placeholder="Digite ou cole a matéria/texto do repórter aqui..." class="w-full bg-slate-950 border border-brand-border rounded-xl p-3 text-xs text-slate-200 outline-none focus:border-cyan-500 transition resize-none"></textarea>
+                        </div>
+
+                        <!-- Controle de Rolagem -->
+                        <div class="flex items-center gap-3">
+                            <span class="text-[11px] text-slate-400 font-semibold">Velocidade:</span>
+                            <input type="range" id="director-prompter-speed" min="0" max="5" step="0.5" value="2" class="flex-1 accent-cyan-500">
+                            <span id="prompter-speed-label" class="text-xs font-mono text-cyan-400 font-bold">2x</span>
+                        </div>
+
+                        <button onclick="sendPrompterToReporters()" class="w-full py-2.5 bg-amber-500 hover:bg-amber-400 text-black font-bold rounded-xl text-xs transition flex items-center justify-center gap-2 shadow-lg shadow-amber-500/10">
+                            <i class="fa-solid fa-paper-plane"></i> Enviar Texto para o Repórter
+                        </button>
+                    </div>
+                </div>
+
+                <!-- COLUNA DIREITA: GRADE DE CÂMERAS CONECTADAS (2 COLS) -->
+                <div class="lg:col-span-2 flex flex-col gap-4">
+                    <div class="flex items-center justify-between">
+                        <h3 class="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-2">
+                            <i class="fa-solid fa-video"></i> Câmeras & Repórteres Conectados (<span id="connected-count">0</span>)
+                        </h3>
+                    </div>
+
+                    <!-- GRID DE CARDS DOS CONVIDADOS -->
+                    <div id="director-cameras-grid" class="grid grid-cols-1 md:grid-cols-2 gap-4 flex-1 align-content-start">
+                        <!-- EMPTY STATE -->
+                        <div id="director-empty-grid" class="col-span-full border-2 border-dashed border-brand-border rounded-3xl p-12 text-center my-auto">
+                            <i class="fa-solid fa-tower-broadcast text-4xl text-slate-700 mb-3"></i>
+                            <h4 class="text-base font-bold text-slate-400">Nenhum repórter conectado ainda</h4>
+                            <p class="text-xs text-slate-500 max-w-sm mx-auto mt-1">Envie o link de convite para o celular do repórter ou câmera remota para iniciar o monitoramento.</p>
+                            <button onclick="copyGuestInviteLink()" class="mt-4 px-4 py-2 bg-slate-800 hover:bg-slate-700 text-cyan-400 border border-cyan-500/30 rounded-xl text-xs font-bold transition inline-flex items-center gap-2">
+                                <i class="fa-regular fa-copy"></i> Copiar Link de Convidado
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </section>
+
+
+        <!-- ================================================================= -->
+        <!-- MODO 3: REPÓRTER / CÂMERA EXTERNA                                 -->
+        <!-- ================================================================= -->
+        <section id="view-reporter" class="view-panel hidden flex-1 flex flex-col gap-4 max-w-2xl mx-auto w-full relative">
+            
+            <!-- OVERLAY DE TALLY LIGHT (Borda gigante quando No Ar) -->
+            <div id="reporter-tally-overlay" class="pointer-events-none fixed inset-0 z-50 border-0 transition-all duration-300">
+                <div id="reporter-tally-badge" class="hidden absolute top-4 left-1/2 -translate-x-1/2 bg-red-600 text-white font-black px-6 py-2 rounded-full text-sm tracking-widest shadow-2xl flex items-center gap-2 animate-bounce">
+                    <span class="w-3 h-3 rounded-full bg-white animate-ping"></span> VOCÊ ESTÁ NO AR!
+                </div>
+            </div>
+
+            <!-- OVERLAY DE DEIXA / CUE ALERT INSTANTÂNEO -->
+            <div id="reporter-cue-banner" class="hidden bg-red-600 text-white font-black p-3 rounded-2xl text-center text-sm shadow-xl transition-all animate-pulse">
+                --
+            </div>
+
+            <!-- CABEÇALHO DE STATUS E WAKE LOCK -->
+            <div class="bg-brand-card border border-brand-border p-3 rounded-2xl flex items-center justify-between">
+                <div class="flex items-center gap-2">
+                    <span id="reporter-status-dot" class="w-2.5 h-2.5 rounded-full bg-amber-500"></span>
+                    <span id="reporter-status-text" class="text-xs font-bold text-slate-300">Conectando ao Estúdio...</span>
+                </div>
+                <div class="flex items-center gap-2">
+                    <span id="wakelock-badge" class="text-[10px] bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded border border-emerald-500/30 font-semibold">
+                        <i class="fa-solid fa-[#080a0f] fa-lock"></i> Tela Ativa
+                    </span>
+                </div>
+            </div>
+
+            <!-- VÍDEO PRINCIPAL (CÂMERA LOCAL DO REPÓRTER) + TELEPROMPTER OVERLAY -->
+            <div class="bg-black rounded-3xl border border-brand-border overflow-hidden aspect-[3/4] sm:aspect-video relative flex flex-col justify-between group shadow-2xl">
+                <!-- TELEPROMPTER OVERLAY NO TOPO DA CÂMERA -->
+                <div id="prompter-overlay" class="absolute top-0 inset-x-0 z-20 p-4 bg-gradient-to-b from-black/90 via-black/70 to-transparent min-h-[40%] flex flex-col justify-start">
+                    <div class="flex items-center justify-between text-[10px] text-amber-400 font-bold uppercase tracking-wider mb-2">
+                        <span><i class="fa-solid fa-scroll"></i> Teleprompter</span>
+                        <div class="flex items-center gap-2">
+                            <button onclick="adjustPrompterFontSize(-2)" class="px-1.5 py-0.5 bg-black/60 rounded border border-white/10 text-white font-mono">A-</button>
+                            <button onclick="adjustPrompterFontSize(2)" class="px-1.5 py-0.5 bg-black/60 rounded border border-white/10 text-white font-mono">A+</button>
+                        </div>
+                    </div>
+                    <!-- Conteúdo com Rolagem -->
+                    <div id="prompter-scroll-box" class="prompter-container overflow-hidden max-h-40 sm:max-h-48 text-center text-white font-bold leading-relaxed transition-all">
+                        <p id="prompter-text-display" class="text-sm sm:text-base text-yellow-300 drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)]">
+                            Aguardando texto da matéria do estúdio...
+                        </p>
+                    </div>
+                </div>
+
+                <!-- Elemento de Vídeo Local -->
+                <video id="reporter-local-video" autoplay playsinline muted class="w-full h-full object-cover transform scale-x-[-1]"></video>
+
+                <!-- RETORNO DE VÍDEO DO ESTÚDIO (PICTURE-IN-PICTURE MINIMIZÁVEL) -->
+                <div id="reporter-ifb-box" class="absolute bottom-4 right-4 z-20 w-28 sm:w-36 bg-slate-900 rounded-2xl overflow-hidden border border-white/20 shadow-2xl flex flex-col">
+                    <div class="bg-slate-950 px-2 py-1 text-[9px] font-bold text-cyan-400 flex items-center justify-between border-b border-white/10">
+                        <span><i class="fa-solid fa-headset"></i> RETORNO</span>
+                        <button onclick="toggleIfbPipSize()" class="text-slate-400 hover:text-white"><i class="fa-solid fa-compress"></i></button>
+                    </div>
+                    <div class="aspect-video bg-black relative">
+                        <video id="reporter-ifb-video" autoplay playsinline class="w-full h-full object-cover"></video>
+                        <div id="reporter-ifb-empty" class="absolute inset-0 flex items-center justify-center text-[10px] text-slate-500 text-center p-1">
+                            Sem vídeo do estúdio
+                        </div>
+                    </div>
+                </div>
+
+                <!-- MEDIDOR VU E CONTROLE DE MUDO LOCAL -->
+                <div class="absolute bottom-4 left-4 z-20 bg-black/80 backdrop-blur-md px-3 py-2 rounded-2xl border border-white/10 flex items-center gap-3">
+                    <button id="btn-reporter-mute" onclick="toggleReporterMute()" class="w-8 h-8 rounded-xl bg-slate-800 text-white flex items-center justify-center text-xs">
+                        <i class="fa-solid fa-microphone"></i>
+                    </button>
+                    <div class="w-20 sm:w-28 h-2 bg-slate-800 rounded-full overflow-hidden">
+                        <div id="reporter-vu-bar" class="h-full bg-emerald-500 w-0 transition-all duration-75"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- PAINEL DE CONTROLES DO HARDWARE E NOME DO REPÓRTER -->
+            <div class="bg-brand-card border border-brand-border rounded-2xl p-4 space-y-3">
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    <div>
+                        <label class="text-[10px] font-bold uppercase text-slate-400">Nome do Repórter / Câmera</label>
+                        <input type="text" id="reporter-name-input" value="Repórter 1" onchange="updateReporterName()" class="w-full bg-slate-950 border border-brand-border rounded-xl p-2 text-xs font-bold text-white outline-none mt-1">
+                    </div>
+                    <div>
+                        <label class="text-[10px] font-bold uppercase text-slate-400">Selecionar Câmera</label>
+                        <select id="reporter-select-cam" onchange="switchReporterHardware()" class="w-full bg-slate-950 border border-brand-border rounded-xl p-2 text-xs text-white outline-none mt-1"></select>
+                    </div>
+                    <div>
+                        <label class="text-[10px] font-bold uppercase text-slate-400">Selecionar Microfone</label>
+                        <select id="reporter-select-mic" onchange="switchReporterHardware()" class="w-full bg-slate-950 border border-brand-border rounded-xl p-2 text-xs text-white outline-none mt-1"></select>
+                    </div>
+                </div>
+
+                <div class="flex items-center justify-between pt-2 border-t border-brand-border text-xs">
+                    <button onclick="flipReporterCamera()" class="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl font-bold flex items-center gap-2 border border-brand-border">
+                        <i class="fa-solid fa-camera-rotate"></i> Alternar Câmera Frontal/Traseira
+                    </button>
+                    <div class="flex items-center gap-2">
+                        <label class="text-[11px] text-slate-400">Vol. Retorno:</label>
+                        <input type="range" id="reporter-ifb-volume" min="0" max="1" step="0.1" value="1" oninput="adjustIfbVolume(this.value)" class="w-20 accent-cyan-500">
+                    </div>
+                </div>
+            </div>
+
+        </section>
+
+
+        <!-- ================================================================= -->
+        <!-- MODO 4: CAPTURA LIMPA PARA OBS STUDIO / VMIX                      -->
+        <!-- ================================================================= -->
+        <section id="view-obs-clean" class="view-panel hidden fixed inset-0 z-50 obs-transparent flex items-center justify-center overflow-hidden">
+            <video id="obs-clean-video" autoplay playsinline class="w-full h-full object-contain"></video>
+            <!-- Overlay imperceptível para diagnóstico se necessário -->
+            <div id="obs-status-debug" class="absolute bottom-2 left-2 text-[10px] font-mono text-white/30 pointer-events-none">
+                OBS Source Connected
+            </div>
+        </section>
+
+    </main>
+
+
+    <!-- ================================================================= -->
+    <!-- MODAL 1: PERSONALIZAÇÃO DO ESTÚDIO (LOGO E CORES)                -->
+    <!-- ================================================================= -->
+    <div id="modal-settings" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm hidden flex items-center justify-center p-4">
+        <div class="bg-brand-card border border-brand-border rounded-3xl p-6 max-w-md w-full space-y-6 shadow-2xl">
+            <div class="flex items-center justify-between border-b border-brand-border pb-3">
+                <h3 class="font-extrabold text-base text-white flex items-center gap-2">
+                    <i class="fa-solid fa-palette text-cyan-400"></i> Personalização da Emissora
+                </h3>
+                <button onclick="closeModal('settings')" class="text-slate-400 hover:text-white"><i class="fa-solid fa-xmark text-lg"></i></button>
+            </div>
+
+            <div class="space-y-4">
+                <!-- Upload de Logo -->
+                <div class="space-y-2">
+                    <label class="text-xs font-bold text-slate-300">Logo do Estúdio (PNG / JPG)</label>
+                    <input type="file" id="setting-logo-input" accept="image/*" onchange="handleLogoUpload(event)" class="w-full bg-slate-950 border border-brand-border rounded-xl p-2 text-xs text-slate-400">
+                    <p class="text-[10px] text-slate-500">A logo será exibida no topo do aplicativo e na tela do repórter.</p>
+                </div>
+
+                <!-- Nome Personalizado -->
+                <div class="space-y-2">
+                    <label class="text-xs font-bold text-slate-300">Nome do Estúdio / Canal</label>
+                    <input type="text" id="setting-title-input" value="STUDIO DO" onchange="updateStudioTitle(this.value)" class="w-full bg-slate-950 border border-brand-border rounded-xl p-2.5 text-xs text-white font-bold outline-none">
+                </div>
+
+                <!-- Cor de Destaque -->
+                <div class="space-y-2">
+                    <label class="text-xs font-bold text-slate-300">Cor de Destaque do Tema</label>
+                    <div class="grid grid-cols-4 gap-2">
+                        <button onclick="setThemeAccent('#06b6d4')" class="h-10 rounded-xl bg-cyan-500 border-2 border-white/20 hover:scale-105 transition"></button>
+                        <button onclick="setThemeAccent('#ef4444')" class="h-10 rounded-xl bg-red-500 border-2 border-white/20 hover:scale-105 transition"></button>
+                        <button onclick="setThemeAccent('#10b981')" class="h-10 rounded-xl bg-emerald-500 border-2 border-white/20 hover:scale-105 transition"></button>
+                        <button onclick="setThemeAccent('#f59e0b')" class="h-10 rounded-xl bg-amber-500 border-2 border-white/20 hover:scale-105 transition"></button>
+                    </div>
+                </div>
+            </div>
+
+            <button onclick="closeModal('settings')" class="w-full py-3 bg-cyan-600 hover:bg-cyan-500 text-black font-bold rounded-xl text-xs transition">
+                Salvar Configurações
+            </button>
+        </div>
+    </div>
+
+
+    <!-- ================================================================= -->
+    <!-- MODAL 2: AJUDA E GUIA DE INSTALAÇÃO                               -->
+    <!-- ================================================================= -->
+    <div id="modal-help" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm hidden flex items-center justify-center p-4">
+        <div class="bg-brand-card border border-brand-border rounded-3xl p-6 max-w-lg w-full space-y-4 shadow-2xl max-h-[90vh] overflow-y-auto">
+            <div class="flex items-center justify-between border-b border-brand-border pb-3">
+                <h3 class="font-extrabold text-base text-white flex items-center gap-2">
+                    <i class="fa-solid fa-circle-question text-amber-400"></i> Como Colocar em Prática
+                </h3>
+                <button onclick="closeModal('help')" class="text-slate-400 hover:text-white"><i class="fa-solid fa-xmark text-lg"></i></button>
+            </div>
+
+            <div class="space-y-3 text-xs text-slate-300 leading-relaxed">
+                <div class="p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl text-amber-300">
+                    <strong class="font-bold">Requisito Essencial (HTTPS):</strong> Por regras do WebRTC e navegadores móveis, as câmeras só funcionam em conexões seguras (HTTPS).
+                </div>
+
+                <h4 class="font-bold text-cyan-400 text-sm">1. Hospedagem Grátis em 1 Minuto:</h4>
+                <ul class="list-disc list-inside space-y-1 text-slate-400">
+                    <li><strong>Netlify Drop:</strong> Acesse <code class="text-white">app.netlify.com/drop</code> e arraste este arquivo <code class="text-white">index.html</code>. Seu link HTTPS fica pronto na hora.</li>
+                    <li><strong>GitHub Pages:</strong> Crie um repositório no GitHub, suba o <code class="text-white">index.html</code> e ative o GitHub Pages.</li>
+                </ul>
+
+                <h4 class="font-bold text-cyan-400 text-sm">2. Adicionando ao OBS Studio / vMix:</h4>
+                <ol class="list-decimal list-inside space-y-1 text-slate-400">
+                    <li>No Painel do Diretor, clique em <strong>Link OBS</strong> do repórter.</li>
+                    <li>No OBS, adicione uma fonte <strong>Navegador (Browser Source)</strong>.</li>
+                    <li>Cole o link, coloque resolução <code class="text-white">1920x1080</code> e marque <strong>"Controlar áudio via OBS"</strong>.</li>
+                </ol>
+
+                <h4 class="font-bold text-cyan-400 text-sm">3. Dica de Áudio sem Eco (Mix-Minus):</h4>
+                <p class="text-slate-400">No retorno do estúdio para o repórter, envie apenas a voz do apresentador/estúdio. Não envie a voz do próprio repórter de volta para evitar microfonia.</p>
+            </div>
+
+            <button onclick="closeModal('help')" class="w-full py-2.5 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-xl text-xs transition border border-brand-border">
+                Entendi!
+            </button>
+        </div>
+    </div>
+
+
+    <!-- TOAST CONTAINER FOR NOTIFICATIONS -->
+    <div id="toast-container" class="fixed bottom-5 right-5 z-50 flex flex-col gap-2 pointer-events-none"></div>
+
+
+    <!-- ================================================================= -->
+    <!-- LÓGICA JAVASCRIPT COMPLETA                                       -->
+    <!-- ================================================================= -->
+    <script>
+        // ESTADO GLOBAL DA APLICAÇÃO
+        const STATE = {
+            room: '',
+            role: 'home', // 'home' | 'director' | 'guest' | 'obs'
+            peer: null,
+            myPeerId: null,
+            localStream: null,
+            directorTalkbackStream: null,
+            activeCalls: {},       // Store MediaConnections (Diretor)
+            activeDataConns: {},   // Store DataConnections (Diretor)
+            reporterDataConn: null,// DataConnection no Repórter
+            vuIntervals: {},
+            wakeLock: null,
+            prompterSpeed: 2,
+            prompterInterval: null,
+            prompterFontSize: 16,
+            studioLogo: localStorage.getItem('studio_logo') || '',
+            studioTitle: localStorage.getItem('studio_title') || 'STUDIO DO',
+            accentColor: localStorage.getItem('studio_accent') || '#06b6d4'
+        };
+
+        // CONFIGURAÇÃO DOS SERVIDORES STUN GOOGLE PARA WEBRTC P2P ROBUSTO
+        const PEER_CONFIG = {
+            config: {
+                iceServers: [
+                    { urls: 'stun:stun.l.google.com:19302' },
+                    { urls: 'stun:stun1.l.google.com:19302' },
+                    { urls: 'stun:stun2.l.google.com:19302' },
+                    { urls: 'stun:stun3.l.google.com:19302' }
+                ]
+            }
+        };
+
+        // INICIALIZAÇÃO AO CARREGAR A PÁGINA
+        window.addEventListener('DOMContentLoaded', () => {
+            applySavedSettings();
+            parseUrlParams();
+            setupPrompterSpeedListener();
+        });
+
+        // LEITURA DE PARÂMETROS DA URL (?room=XXX&role=guest/director ou ?view=XXX&clean=1)
+        function parseUrlParams() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const roomParam = urlParams.get('room');
+            const roleParam = urlParams.get('role');
+            const viewParam = urlParams.get('view');
+            const cleanParam = urlParams.get('clean');
+
+            if (viewParam && cleanParam) {
+                switchView('obs-clean');
+                initObsCleanMode(viewParam);
+            } else if (roomParam && roleParam === 'guest') {
+                STATE.room = roomParam;
+                switchView('reporter');
+                initReporterMode(roomParam);
+            } else if (roomParam && roleParam === 'director') {
+                STATE.room = roomParam;
+                switchView('director');
+                initDirectorMode(roomParam);
+            }
+        }
+
+        // GERENCIADOR DE VISUALIZAÇÕES/TELAS
+        function switchView(viewName) {
+            STATE.role = viewName;
+            document.querySelectorAll('.view-panel').forEach(p => p.classList.add('hidden'));
+            
+            const header = document.getElementById('main-header');
+            if (viewName === 'obs-clean') {
+                header.classList.add('hidden');
+                document.body.classList.add('obs-transparent');
+            } else {
+                header.classList.remove('hidden');
+                document.body.classList.remove('obs-transparent');
+            }
+
+            const target = document.getElementById(`view-${viewName}`);
+            if (target) target.classList.remove('hidden');
+        }
+
+        function generateRandomRoom() {
+            const code = Math.random().toString(36).substring(2, 7);
+            document.getElementById('home-room-input').value = `sala-${code}`;
+        }
+
+        function enterRoom(role) {
+            const input = document.getElementById('home-room-input').value.trim();
+            const roomName = input || `sala-${Math.random().toString(36).substring(2, 7)}`;
+            STATE.room = roomName;
+
+            if (role === 'director') {
+                switchView('director');
+                initDirectorMode(roomName);
+            } else {
+                switchView('reporter');
+                initReporterMode(roomName);
+            }
+        }
+
+
+        // =========================================================================
+        // MODO 1: PAINEL DO DIRETOR (ESTÚDIO)
+        // =========================================================================
+        function initDirectorMode(roomName) {
+            document.getElementById('director-room-title').innerText = roomName;
+            const directorPeerId = `${roomName}-director`;
+
+            STATE.peer = new Peer(directorPeerId, PEER_CONFIG);
+
+            STATE.peer.on('open', (id) => {
+                STATE.myPeerId = id;
+                showToast(`Estúdio conectado como: ${id}`, "success");
+                loadDirectorHardware();
+            });
+
+            // Conexão de Dados Recebida de Repórteres
+            STATE.peer.on('connection', (conn) => {
+                const peerId = conn.peer;
+                STATE.activeDataConns[peerId] = conn;
+
+                conn.on('data', (data) => {
+                    if (data.type === 'REPORTER_INFO') {
+                        updateReporterCardName(peerId, data.name);
+                    }
+                });
+
+                conn.on('close', () => {
+                    removeReporterCard(peerId);
+                });
+            });
+
+            // Chamada de Mídia Recebida (Vídeo do Repórter)
+            STATE.peer.on('call', (call) => {
+                call.answer(); // Responde sem enviar mídia inicialmente (ou envia IFB se ativo)
+                
+                call.on('stream', (remoteStream) => {
+                    addReporterCardToDirector(call.peer, remoteStream, call);
+                });
+
+                call.on('close', () => {
+                    removeReporterCard(call.peer);
+                });
+            });
+
+            STATE.peer.on('error', (err) => {
+                console.error("Erro no Peer Diretor:", err);
+                showToast("Erro de Conexão WebRTC: " + err.type, "error");
+            });
+        }
+
+        async function loadDirectorHardware() {
+            try {
+                const devices = await navigator.mediaDevices.enumerateDevices();
+                const micSelect = document.getElementById('director-mic-select');
+                const camSelect = document.getElementById('director-cam-select');
+
+                micSelect.innerHTML = '<option value="">Sem Microfone de Retorno</option>';
+                camSelect.innerHTML = '<option value="">Sem Câmera (Apenas Áudio)</option>';
+
+                devices.forEach(dev => {
+                    const opt = document.createElement('option');
+                    opt.value = dev.deviceId;
+                    if (dev.kind === 'audioinput') {
+                        opt.text = dev.label || `Microfone ${micSelect.length}`;
+                        micSelect.appendChild(opt);
+                    } else if (dev.kind === 'videoinput') {
+                        opt.text = dev.label || `Câmera ${camSelect.length}`;
+                        camSelect.appendChild(opt);
+                    }
+                });
+            } catch (e) {
+                console.warn("Erro ao enumerar dispositivos:", e);
+            }
+        }
+
+        async function toggleDirectorTalkback() {
+            const btn = document.getElementById('btn-talkback-toggle');
+            const statusBadge = document.getElementById('director-ifb-status');
+            const micId = document.getElementById('director-mic-select').value;
+            const camId = document.getElementById('director-cam-select').value;
+
+            if (STATE.directorTalkbackStream) {
+                // Parar Retorno
+                STATE.directorTalkbackStream.getTracks().forEach(t => t.stop());
+                STATE.directorTalkbackStream = null;
+                document.getElementById('director-local-video').srcObject = null;
+                document.getElementById('director-video-placeholder').classList.remove('hidden');
+
+                btn.className = "flex-1 py-3 bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold rounded-xl text-xs transition flex items-center justify-center gap-2 border border-brand-border";
+                btn.innerHTML = `<i class="fa-solid fa-microphone"></i> Abrir Retorno (IFB)`;
+                statusBadge.innerText = "Desativado";
+                statusBadge.className = "text-[10px] bg-slate-800 text-slate-400 px-2 py-0.5 rounded font-mono";
+
+                // Re-ligar para repórteres sem áudio do estúdio
+                broadcastDirectorStream(null);
+            } else {
+                if (!micId && !camId) {
+                    showToast("Selecione ao menos um microfone de retorno!", "error");
+                    return;
+                }
+
+                try {
+                    const constraints = {
+                        audio: micId ? { deviceId: { exact: micId } } : false,
+                        video: camId ? { deviceId: { exact: camId }, width: 640 } : false
+                    };
+
+                    STATE.directorTalkbackStream = await navigator.mediaDevices.getUserMedia(constraints);
+                    
+                    const videoElem = document.getElementById('director-local-video');
+                    videoElem.srcObject = STATE.directorTalkbackStream;
+                    document.getElementById('director-video-placeholder').classList.add('hidden');
+
+                    setupVUMeter(STATE.directorTalkbackStream, 'director-vu-bar');
+
+                    btn.className = "flex-1 py-3 bg-red-600 hover:bg-red-500 text-white font-bold rounded-xl text-xs transition flex items-center justify-center gap-2 shadow-lg shadow-red-500/20 animate-pulse";
+                    btn.innerHTML = `<i class="fa-solid fa-microphone-slash"></i> RETORNO NO AR (Fechar)`;
+                    statusBadge.innerText = "NO AR";
+                    statusBadge.className = "text-[10px] bg-red-500/20 text-red-400 px-2 py-0.5 rounded border border-red-500/30 font-bold font-mono";
+
+                    // Transmitir fluxo de retorno para todos os repórteres
+                    broadcastDirectorStream(STATE.directorTalkbackStream);
+
+                } catch (err) {
+                    showToast("Erro ao abrir retorno: " + err.message, "error");
+                }
+            }
+        }
+
+        function broadcastDirectorStream(stream) {
+            Object.keys(STATE.activeDataConns).forEach(reporterId => {
+                if (stream) {
+                    STATE.peer.call(reporterId, stream);
+                }
+            });
+        }
+
+        function addReporterCardToDirector(peerId, stream, call) {
+            const grid = document.getElementById('director-cameras-grid');
+            document.getElementById('director-empty-grid').classList.add('hidden');
+
+            if (document.getElementById(`card-${peerId}`)) return;
+
+            const cleanObsUrl = `${window.location.origin}${window.location.pathname}?view=${peerId}&clean=1`;
+
+            const card = document.createElement('div');
+            card.id = `card-${peerId}`;
+            card.className = "bg-brand-card border border-brand-border rounded-2xl p-4 flex flex-col gap-3 relative shadow-xl transition-all";
+
+            card.innerHTML = `
+                <div class="flex items-center justify-between">
+                    <span id="name-${peerId}" class="text-xs font-bold text-slate-200 truncate max-w-[140px]">
+                        <i class="fa-solid fa-user-ninja text-cyan-400 mr-1"></i> Repórter (${peerId.substr(-4)})
+                    </span>
+                    <span id="badge-tally-${peerId}" class="text-[10px] bg-slate-800 text-slate-400 font-bold px-2 py-0.5 rounded border border-slate-700">
+                        STANDBY
+                    </span>
+                </div>
+
+                <div class="bg-black rounded-xl overflow-hidden aspect-video relative group border border-brand-border">
+                    <video id="video-${peerId}" autoplay playsinline class="w-full h-full object-cover"></video>
+                    
+                    <!-- VU Bar Overlay -->
+                    <div class="absolute bottom-2 left-2 right-2 bg-black/80 px-2 py-1 rounded-lg border border-white/10 flex items-center gap-2">
+                        <i class="fa-solid fa-microphone text-[10px] text-slate-400"></i>
+                        <div class="flex-1 h-1.5 bg-slate-800 rounded-full overflow-hidden">
+                            <div id="vu-${peerId}" class="h-full bg-emerald-500 w-0 transition-all duration-75"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- CONTROLES DO CARD -->
+                <div class="grid grid-cols-2 gap-2 pt-1">
+                    <button id="btn-tally-${peerId}" onclick="toggleTally('${peerId}')" class="py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-[11px] font-bold transition flex items-center justify-center gap-1.5 border border-brand-border">
+                        <i class="fa-solid fa-signal"></i> Tally NO AR
+                    </button>
+                    
+                    <button onclick="sendRemoteCommand('${peerId}', 'SWITCH_CAMERA')" class="py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-[11px] font-bold transition flex items-center justify-center gap-1.5 border border-brand-border">
+                        <i class="fa-solid fa-camera-rotate"></i> Trocar Cam
+                    </button>
+
+                    <button onclick="sendRemoteCommand('${peerId}', 'REMOTE_MUTE')" class="py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-[11px] font-bold transition flex items-center justify-center gap-1.5 border border-brand-border">
+                        <i class="fa-solid fa-volume-xmark"></i> Mutar Mic
+                    </button>
+
+                    <button onclick="copyToClipboard('${cleanObsUrl}')" class="py-2 bg-cyan-600/20 hover:bg-cyan-600/30 text-cyan-400 border border-cyan-500/30 rounded-xl text-[11px] font-bold transition flex items-center justify-center gap-1.5">
+                        <i class="fa-regular fa-copy"></i> Link OBS
+                    </button>
+                </div>
+            `;
+
+            grid.appendChild(card);
+
+            const videoElement = document.getElementById(`video-${peerId}`);
+            videoElement.srcObject = stream;
+
+            setupVUMeter(stream, `vu-${peerId}`);
+            updateConnectedCount();
+        }
+
+        function updateReporterCardName(peerId, name) {
+            const nameElem = document.getElementById(`name-${peerId}`);
+            if (nameElem) {
+                nameElem.innerHTML = `<i class="fa-solid fa-user-ninja text-cyan-400 mr-1"></i> ${name}`;
+            }
+        }
+
+        function removeReporterCard(peerId) {
+            const card = document.getElementById(`card-${peerId}`);
+            if (card) card.remove();
+            delete STATE.activeDataConns[peerId];
+            updateConnectedCount();
+
+            const grid = document.getElementById('director-cameras-grid');
+            if (grid.querySelectorAll('[id^="card-"]').length === 0) {
+                document.getElementById('director-empty-grid').classList.remove('hidden');
+            }
+        }
+
+        function updateConnectedCount() {
+            const count = Object.keys(STATE.activeDataConns).length;
+            document.getElementById('connected-count').innerText = count;
+        }
+
+        // COMANDOS REMOTOS (DIREÇÃO -> REPÓRTER VIA DATACONNECTION)
+        function toggleTally(peerId) {
+            const btn = document.getElementById(`btn-tally-${peerId}`);
+            const badge = document.getElementById(`badge-tally-${peerId}`);
+            const isCurrentlyOnAir = btn.classList.contains('bg-red-600');
+
+            const newState = !isCurrentlyOnAir;
+
+            sendRemoteCommand(peerId, 'TALLY', { state: newState });
+
+            if (newState) {
+                btn.className = "py-2 bg-red-600 text-white rounded-xl text-[11px] font-bold transition flex items-center justify-center gap-1.5 shadow-lg shadow-red-500/20 animate-pulse";
+                badge.className = "text-[10px] bg-red-500/20 text-red-400 font-bold px-2 py-0.5 rounded border border-red-500/30 animate-pulse";
+                badge.innerText = "NO AR";
+            } else {
+                btn.className = "py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-[11px] font-bold transition flex items-center justify-center gap-1.5 border border-brand-border";
+                badge.className = "text-[10px] bg-slate-800 text-slate-400 font-bold px-2 py-0.5 rounded border border-slate-700";
+                badge.innerText = "STANDBY";
+            }
+        }
+
+        function sendCueAlert(text, color) {
+            broadcastDataMessage({ type: 'CUE_ALERT', text, color });
+            showToast(`Sinal enviado: "${text}"`, "info");
+        }
+
+        function sendPrompterToReporters() {
+            const text = document.getElementById('director-prompter-text').value;
+            const speed = parseFloat(document.getElementById('director-prompter-speed').value);
+
+            broadcastDataMessage({ type: 'PROMPTER_SYNC', text, speed });
+            showToast("Texto do Teleprompter atualizado nos repórteres!", "success");
+        }
+
+        function sendRemoteCommand(peerId, commandType, payload = {}) {
+            const conn = STATE.activeDataConns[peerId];
+            if (conn) {
+                conn.send({ type: commandType, ...payload });
+            }
+        }
+
+        function broadcastDataMessage(dataObj) {
+            Object.values(STATE.activeDataConns).forEach(conn => {
+                if (conn && conn.open) conn.send(dataObj);
+            });
+        }
+
+        function copyGuestInviteLink() {
+            const link = `${window.location.origin}${window.location.pathname}?room=${STATE.room}&role=guest`;
+            copyToClipboard(link);
+            showToast("Link do Repórter copiado para a área de transferência!", "success");
+        }
+
+        function copyAutoSceneLink() {
+            const link = `${window.location.origin}${window.location.pathname}?room=${STATE.room}&role=director`;
+            copyToClipboard(link);
+            showToast("Link do Diretor copiado!", "info");
+        }
+
+
+        // =========================================================================
+        // MODO 2: REPÓRTER / CÂMERA MOBILE
+        // =========================================================================
+        function initReporterMode(roomName) {
+            requestWakeLock();
+            
+            const randomHash = Math.random().toString(36).substring(2, 6);
+            const reporterPeerId = `${roomName}-guest-${randomHash}`;
+
+            STATE.peer = new Peer(reporterPeerId, PEER_CONFIG);
+
+            STATE.peer.on('open', (id) => {
+                STATE.myPeerId = id;
+                document.getElementById('reporter-status-text').innerText = "Conectado ao Estúdio";
+                document.getElementById('reporter-status-dot').className = "w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse";
+
+                // Estabelece DataConnection com o Diretor
+                connectDataToDirector(roomName);
+                
+                // Inicia Câmera Local e envia fluxo
+                startReporterCamera();
+            });
+
+            // Recebe chamada de Mídia (Vídeo de Retorno IFB do Diretor)
+            STATE.peer.on('call', (call) => {
+                call.answer();
+                call.on('stream', (remoteIfbStream) => {
+                    const ifbVideo = document.getElementById('reporter-ifb-video');
+                    ifbVideo.srcObject = remoteIfbStream;
+                    document.getElementById('reporter-ifb-empty').classList.add('hidden');
+                });
+            });
+
+            STATE.peer.on('error', (err) => {
+                document.getElementById('reporter-status-text').innerText = "Erro na Conexão";
+                document.getElementById('reporter-status-dot').className = "w-2.5 h-2.5 rounded-full bg-red-500";
+            });
+        }
+
+        function connectDataToDirector(roomName) {
+            const directorPeerId = `${roomName}-director`;
+            const conn = STATE.peer.connect(directorPeerId);
+            STATE.reporterDataConn = conn;
+
+            conn.on('open', () => {
+                const name = document.getElementById('reporter-name-input').value;
+                conn.send({ type: 'REPORTER_INFO', name });
+            });
+
+            conn.on('data', (data) => {
+                handleDirectorCommand(data);
+            });
+        }
+
+        function handleDirectorCommand(data) {
+            if (data.type === 'TALLY') {
+                const overlay = document.getElementById('reporter-tally-overlay');
+                const badge = document.getElementById('reporter-tally-badge');
+                if (data.state) {
+                    overlay.classList.add('tally-active-border');
+                    badge.classList.remove('hidden');
+                } else {
+                    overlay.classList.remove('tally-active-border');
+                    badge.classList.add('hidden');
+                }
+            } else if (data.type === 'CUE_ALERT') {
+                const banner = document.getElementById('reporter-cue-banner');
+                banner.innerText = data.text;
+                banner.classList.remove('hidden');
+                setTimeout(() => banner.classList.add('hidden'), 5000);
+            } else if (data.type === 'PROMPTER_SYNC') {
+                if (data.text) {
+                    document.getElementById('prompter-text-display').innerText = data.text;
+                }
+                if (data.speed !== undefined) {
+                    STATE.prompterSpeed = data.speed;
+                    startPrompterScroll();
+                }
+            } else if (data.type === 'SWITCH_CAMERA') {
+                flipReporterCamera();
+            } else if (data.type === 'REMOTE_MUTE') {
+                toggleReporterMute();
+            }
+        }
+
+        async function startReporterCamera() {
+            const camId = document.getElementById('reporter-select-cam').value;
+            const micId = document.getElementById('reporter-select-mic').value;
+
+            const constraints = {
+                video: {
+                    deviceId: camId ? { exact: camId } : undefined,
+                    width: { ideal: 1280 },
+                    height: { ideal: 720 },
+                    facingMode: 'user'
+                },
+                audio: {
+                    deviceId: micId ? { exact: micId } : undefined,
+                    echoCancellation: true,
+                    noiseSuppression: true
+                }
+            };
+
+            try {
+                if (STATE.localStream) {
+                    STATE.localStream.getTracks().forEach(t => t.stop());
+                }
+
+                STATE.localStream = await navigator.mediaDevices.getUserMedia(constraints);
+                
+                const localVid = document.getElementById('reporter-local-video');
+                localVid.srcObject = STATE.localStream;
+
+                setupVUMeter(STATE.localStream, 'reporter-vu-bar');
+                populateReporterDevices();
+
+                // Chamar o Diretor transmitindo esta câmera
+                const directorPeerId = `${STATE.room}-director`;
+                STATE.peer.call(directorPeerId, STATE.localStream);
+
+            } catch (err) {
+                showToast("Erro ao ligar câmera: " + err.message, "error");
+            }
+        }
+
+        async function populateReporterDevices() {
+            try {
+                const devices = await navigator.mediaDevices.enumerateDevices();
+                const camSel = document.getElementById('reporter-select-cam');
+                const micSel = document.getElementById('reporter-select-mic');
+
+                camSel.innerHTML = '';
+                micSel.innerHTML = '';
+
+                devices.forEach(dev => {
+                    const opt = document.createElement('option');
+                    opt.value = dev.deviceId;
+                    if (dev.kind === 'videoinput') {
+                        opt.text = dev.label || `Câmera ${camSel.length + 1}`;
+                        camSel.appendChild(opt);
+                    } else if (dev.kind === 'audioinput') {
+                        opt.text = dev.label || `Microfone ${micSel.length + 1}`;
+                        micSel.appendChild(opt);
+                    }
+                });
+            } catch (e) {}
+        }
+
+        function switchReporterHardware() {
+            startReporterCamera();
+        }
+
+        async function flipReporterCamera() {
+            const camSel = document.getElementById('reporter-select-cam');
+            if (camSel.options.length > 1) {
+                const nextIndex = (camSel.selectedIndex + 1) % camSel.options.length;
+                camSel.selectedIndex = nextIndex;
+                startReporterCamera();
+                showToast("Câmera alternada", "info");
+            }
+        }
+
+        function toggleReporterMute() {
+            if (!STATE.localStream) return;
+            const audioTrack = STATE.localStream.getAudioTracks()[0];
+            if (audioTrack) {
+                audioTrack.enabled = !audioTrack.enabled;
+                const btn = document.getElementById('btn-reporter-mute');
+                btn.className = audioTrack.enabled ? 
+                    "w-8 h-8 rounded-xl bg-slate-800 text-white flex items-center justify-center text-xs" : 
+                    "w-8 h-8 rounded-xl bg-red-600 text-white flex items-center justify-center text-xs animate-pulse";
+                btn.innerHTML = audioTrack.enabled ? '<i class="fa-solid fa-microphone"></i>' : '<i class="fa-solid fa-microphone-slash"></i>';
+            }
+        }
+
+        function updateReporterName() {
+            const name = document.getElementById('reporter-name-input').value;
+            if (STATE.reporterDataConn && STATE.reporterDataConn.open) {
+                STATE.reporterDataConn.send({ type: 'REPORTER_INFO', name });
+            }
+        }
+
+        function adjustIfbVolume(val) {
+            const ifbVid = document.getElementById('reporter-ifb-video');
+            if (ifbVid) ifbVid.volume = parseFloat(val);
+        }
+
+        function toggleIfbPipSize() {
+            const box = document.getElementById('reporter-ifb-box');
+            box.classList.toggle('w-28');
+            box.classList.toggle('w-48');
+        }
+
+
+        // =========================================================================
+        // MODO 3: FONTE LIMPA PARA OBS STUDIO / VMIX
+        // =========================================================================
+        function initObsCleanMode(targetPeerId) {
+            STATE.peer = new Peer(PEER_CONFIG);
+
+            STATE.peer.on('open', () => {
+                const call = STATE.peer.call(targetPeerId, null);
+                
+                call.on('stream', (remoteStream) => {
+                    const cleanVideo = document.getElementById('obs-clean-video');
+                    cleanVideo.srcObject = remoteStream;
+                    document.getElementById('obs-status-debug').innerText = `OBS Direct Stream Loaded (${targetPeerId})`;
+                });
+            });
+        }
+
+
+        // =========================================================================
+        // CONTROLE DO TELEPROMPTER & WAKE LOCK
+        // =========================================================================
+        function setupPrompterSpeedListener() {
+            const slider = document.getElementById('director-prompter-speed');
+            if (slider) {
+                slider.addEventListener('input', (e) => {
+                    document.getElementById('prompter-speed-label').innerText = e.target.value + 'x';
+                });
+            }
+        }
+
+        function startPrompterScroll() {
+            if (STATE.prompterInterval) clearInterval(STATE.prompterInterval);
+            const box = document.getElementById('prompter-scroll-box');
+
+            if (STATE.prompterSpeed <= 0) return;
+
+            STATE.prompterInterval = setInterval(() => {
+                if (box) {
+                    box.scrollTop += 1;
+                    if (box.scrollTop >= (box.scrollHeight - box.clientHeight)) {
+                        box.scrollTop = 0; // Loop contínuo do texto
+                    }
+                }
+            }, 60 / STATE.prompterSpeed);
+        }
+
+        function adjustPrompterFontSize(delta) {
+            STATE.prompterFontSize = Math.max(12, Math.min(32, STATE.prompterFontSize + delta));
+            document.getElementById('prompter-text-display').style.fontSize = `${STATE.prompterFontSize}px`;
+        }
+
+        async function requestWakeLock() {
+            try {
+                if ('wakeLock' in navigator) {
+                    STATE.wakeLock = await navigator.wakeLock.request('screen');
+                }
+            } catch (err) {
+                console.warn("WakeLock não suportado:", err);
+            }
+        }
+
+
+        // =========================================================================
+        // MEDIDOR DE NÍVEL DE ÁUDIO (VU METER) VIA WEB AUDIO API
+        // =========================================================================
+        function setupVUMeter(stream, elementId) {
+            try {
+                const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                const source = audioCtx.createMediaStreamSource(stream);
+                const analyser = audioCtx.createAnalyser();
+                analyser.fftSize = 64;
+                source.connect(analyser);
+
+                const dataArray = new Uint8Array(analyser.frequencyBinCount);
+                const bar = document.getElementById(elementId);
+
+                if (STATE.vuIntervals[elementId]) clearInterval(STATE.vuIntervals[elementId]);
+
+                STATE.vuIntervals[elementId] = setInterval(() => {
+                    analyser.getByteFrequencyData(dataArray);
+                    let sum = 0;
+                    for (let i = 0; i < dataArray.length; i++) sum += dataArray[i];
+                    let avg = sum / dataArray.length;
+                    let pct = Math.min(100, Math.round((avg / 128) * 100));
+
+                    if (bar) bar.style.width = pct + '%';
+                }, 50);
+            } catch (e) {}
+        }
+
+
+        // =========================================================================
+        // PERSONALIZAÇÃO DE LOGO & TEMA
+        // =========================================================================
+        function handleLogoUpload(event) {
+            const file = event.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    const base64 = e.target.result;
+                    localStorage.setItem('studio_logo', base64);
+                    applyLogo(base64);
+                };
+                reader.readAsDataURL(file);
+            }
+        }
+
+        function applyLogo(base64Data) {
+            const img = document.getElementById('header-logo-img');
+            const txt = document.getElementById('header-logo-text');
+            if (base64Data) {
+                img.src = base64Data;
+                img.classList.remove('hidden');
+                txt.classList.add('hidden');
+            }
+        }
+
+        function updateStudioTitle(val) {
+            const title = val || 'STUDIO DO';
+            document.getElementById('app-title-display').innerText = title;
+            localStorage.setItem('studio_title', title);
+        }
+
+        function setThemeAccent(hexColor) {
+            document.documentElement.style.setProperty('--accent-color', hexColor);
+            localStorage.setItem('studio_accent', hexColor);
+            showToast("Cor de destaque atualizada!", "success");
+        }
+
+        function applySavedSettings() {
+            if (STATE.studioLogo) applyLogo(STATE.studioLogo);
+            if (STATE.studioTitle) updateStudioTitle(STATE.studioTitle);
+            if (STATE.accentColor) setThemeAccent(STATE.accentColor);
+        }
+
+
+        // =========================================================================
+        // UTILITÁRIOS E MODAIS
+        // =========================================================================
+        function openModal(name) {
+            document.getElementById(`modal-${name}`).classList.remove('hidden');
+        }
+
+        function closeModal(name) {
+            document.getElementById(`modal-${name}`).classList.add('hidden');
+        }
+
+        function copyToClipboard(text) {
+            const dummy = document.createElement("textarea");
+            document.body.appendChild(dummy);
+            dummy.value = text;
+            dummy.select();
+            document.execCommand("copy");
+            document.body.removeChild(dummy);
+        }
+
+        function showToast(msg, type = "info") {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+
+            let bg = "bg-slate-900 border-slate-700 text-slate-200";
+            if (type === "success") bg = "bg-emerald-950 border-emerald-700 text-emerald-200";
+            if (type === "error") bg = "bg-red-950 border-red-700 text-red-200";
+
+            toast.className = `px-4 py-3 rounded-2xl border ${bg} text-xs font-bold shadow-2xl transition-all duration-300 pointer-events-auto flex items-center gap-2`;
+            toast.innerHTML = `<span>${msg}</span>`;
+
+            container.appendChild(toast);
+
+            setTimeout(() => {
+                toast.classList.add('opacity-0', 'translate-y-2');
+                setTimeout(() => toast.remove(), 300);
+            }, 3500);
+        }
+    </script>
+</body>
+</html>
